@@ -12,6 +12,8 @@ class Account extends CI_Controller {
         $this->load->model('Model_table', "mt", TRUE);
 		$this->load->model('Billing_model');
     }
+
+
     public function index()  {
         $access = $this->mt->userAccess();
         if(!$access){
@@ -21,6 +23,41 @@ class Account extends CI_Controller {
         $data['accountCode'] = $this->mt->generateAccountCode();
         $data['content'] = $this->load->view('Administrator/account/add_account', $data, TRUE);
         $this->load->view('Administrator/index', $data);
+    }
+
+    public function lcc_expense()
+    {
+        $access = $this->mt->userAccess();
+        if (!$access) {
+            redirect(base_url());
+        }
+        $data['title'] = "Add LC Expense";
+        $data['accountCode'] = $this->mt->generateAccountCode();
+        $data['content'] = $this->load->view('Administrator/account/lcc_expense', $data, TRUE);
+        $this->load->view('Administrator/index', $data);
+    }
+
+    public function addLccExpense()
+    {
+        $res = ['success' => false, 'message' => 'Nothing'];
+        try {
+            $accountObj = json_decode($this->input->raw_input_stream);
+
+            $account = (array)$accountObj;
+            unset($account['expense_id']);
+            $account['status'] = 'a';
+            $account['saved_by'] = $this->session->userdata("FullName");
+            $account['saved_datetime'] = date('Y-m-d H:i:s');
+            $account['branch_id'] = $this->brunch;
+
+            $this->db->insert('tbl_lcc_expenses', $account);
+
+            $res = ['success' => true, 'message' => 'LCC Expensed added'];
+        } catch (Exception $ex) {
+            throw new Exception($ex->getMessage());
+        }
+
+        echo json_encode($res);
     }
    
     public function addAccount() {
@@ -52,6 +89,463 @@ class Account extends CI_Controller {
 
             $res = ['success'=>true, 'message'=>'Account added', 'newAccountCode'=>$this->mt->generateAccountCode()];
         } catch (Exception $ex){
+            throw new Exception($ex->getMessage());
+        }
+
+        echo json_encode($res);
+    }
+
+    public function lcAdd()
+    {
+        $access = $this->mt->userAccess();
+        if (!$access) {
+            redirect(base_url());
+        }
+        $data['title'] = "LC Form";
+        $data['conunits'] = $this->db->query("SELECT * from tbl_lcc_expenses where status = 'a' ")->result();
+        $data['content'] = $this->load->view('Administrator/account/lcc_form', $data, true);
+        $this->load->view('Administrator/index', $data);
+    }
+
+    public function addLccDetails()
+    {
+        $res = ['success' => false, 'message' => ''];
+        try {
+            
+            $expenseObj = json_decode($this->input->raw_input_stream);
+            // echo json_encode($expenseObj->account->Lcc_No);
+            // exit;
+            
+            $lc_number_count = $this->db->query("select * from tbl_lcc where Lcc_No = ?", $expenseObj->account->Lcc_No)->num_rows();
+            if ($lc_number_count > 0) {
+                $res = ['success' => false, 'message' => 'LC Number already exists'];
+                echo json_encode($res);
+                exit;
+            }
+
+
+            $lcc = array(
+                'branch_name' => $expenseObj->account->branch_name,
+                'account_name' => $expenseObj->account->account_name,
+                'account_id' => $expenseObj->account->account_id,
+                'account_number' => $expenseObj->account->account_number,
+                'bank_name' => $expenseObj->account->bank_name,
+                'supplier_name' => $expenseObj->account->supplier_name,
+                'lc_purchase_total_amount' => $expenseObj->account->subTotal,
+                'Lcc_No' => $expenseObj->account->Lcc_No,
+                'description' => $expenseObj->account->description,
+                'lc_date' => date('Y-m-d'),
+                'status' => 'p',
+                'branch_id' => $this->brunch,
+                'AddTime' => date('Y-m-d H:i:s'),
+            );
+
+            $this->db->insert('tbl_lcc', $lcc);
+
+            $lccId = $this->db->insert_id();
+
+
+            // Add Expense Details
+            foreach ($expenseObj->cart as $cartCon) {
+                $ConDetails = array(
+                    'lcc_id' => $lccId,
+                    'expense_name' => $cartCon->expense_name,
+                    'pay_bill' => $cartCon->pay_bill,
+                    'Status' => 'a',
+                    'AddBy' => $this->session->userdata("FullName"),
+                    'AddTime' => date('Y-m-d H:i:s'),
+                    'branch_id' => $this->session->userdata('BRANCHid')
+                );
+                $this->db->insert('tbl_lcc_expenses_details', $ConDetails);
+            }
+
+            // Add LC_Purchase Details 
+            foreach ($expenseObj->productCart as $product) {
+                $lc_purchaseDetails = array(
+                        'LC_IDNo' => $lccId,
+                        'Product_IDNo' => $product->productId,
+                        'LC_PurchaseDetails_TotalQuantity' => $product->quantity,
+                        'LC_PurchaseDetails_Rate' => $product->purchaseRate,
+                        'LC_PurchaseDetails_TotalAmount' => $product->total,
+                        'Status' => 'a',
+                        'AddBy' => $this->session->userdata("FullName"),
+                        'AddTime' => date('Y-m-d H:i:s'),
+                        'LC_PurchaseDetails_branchID' => $this->session->userdata('BRANCHid')
+                    );
+                $this->db->insert('tbl_lc_purchasedetails', $lc_purchaseDetails);
+            }
+
+            // $total_pay_bill = $this->db->query("select ifnull(sum(pay_bill), 0) as total_pay_bill from tbl_lcc_expenses_details where lcc_id = '$lccId' and status = 'a'")->result();
+            $query = $this->db->query("SELECT IFNULL(SUM(pay_bill), 0) AS total_pay_bill FROM tbl_lcc_expenses_details WHERE lcc_id = '$lccId' AND status = 'a'");
+            $row = $query->row();
+
+            if ($row && isset($row->total_pay_bill)) {
+                $total_pay_bill = $row->total_pay_bill;
+            } else {
+                // If the query didn't return a valid result, set $total_pay_bill to a default value (0)
+                $total_pay_bill = 0;
+            }
+
+            // Update Table Bank Transaction 
+            $bank = array(
+                'account_id' => $expenseObj->account->account_id,
+                'lc_id' => $lccId,
+                'transaction_date' => date('Y-m-d H:i:s'),
+                'transaction_type' => 'withdraw',
+                'amount' => strval($total_pay_bill) + $expenseObj->account->subTotal, // Convert to string
+                'note' => 'LC Expenses amount payment in bank',
+                'saved_by' => $this->session->userdata('userId'),
+                'saved_datetime' => date('Y-m-d H:i:s'),
+                'branch_id' => $this->session->userdata('BRANCHid'),
+                'status' => 0
+            );
+
+            $this->db->insert('tbl_bank_transactions', $bank);
+
+
+
+            $res = ['success' => true, 'message' => 'LC added successfully', 'lc_id'=>$lccId];
+        } catch (Exception $ex) {
+            $res = ['success' => false, 'message' => $ex->getMessage()];
+        }
+
+        echo json_encode($res);
+    }
+
+
+
+    public function changeBankStatus()
+    {
+        $res = ['success' => false, 'message' => ''];
+        try {
+            $data = json_decode($this->input->raw_input_stream);
+
+            $this->db->query("update tbl_bank_transactions set status = ? where lc_id = ?", [1, $data->account->Lcc_SlNo]);
+            $this->db->query("update tbl_lcc set status = ? where Lcc_SlNo = ?", ['a', $data->account->Lcc_SlNo]);
+
+            $res = ['success' => true, 'message' => 'Payment Successfull'];
+        } catch (Exception $ex) {
+            $res = ['success' => false, 'message' => $ex->getMessage()];
+        }
+
+        echo json_encode($res);     
+    }
+
+
+    public function getLccDetails ()
+    {
+
+        $data = json_decode($this->input->raw_input_stream);
+
+        // $clause = '';
+
+        // if((isset($data->dateTo) && $data->dateTo != '') && isset($data->dateFrom) & $data->dateFrom != '' )
+        // {
+        //     $clause.= " and lcc.lc_date between '$data->dateTo' and '$data->dateFrom'";
+        // }
+
+        $res  = $this->db->query("
+            SELECT lcc.*,
+                IFNULL(SUM(led.pay_bill), 0) as total_expense,
+                (IFNULL(SUM(led.pay_bill), 0) + lcc.lc_purchase_total_amount) as total_cost
+            FROM tbl_lcc lcc
+            LEFT JOIN tbl_lcc_expenses_details led ON led.lcc_id = lcc.Lcc_SlNo
+            WHERE lcc.status != 'd'
+            AND lcc.branch_id = ?
+            GROUP BY lcc.Lcc_SlNo, lcc.lc_purchase_total_amount
+            ORDER BY lcc.Lcc_SlNo DESC
+            ", $this->brunch)->result();    
+                
+        echo json_encode($res);
+    }
+
+    public function getLCPurchaseDetails()
+    {
+        $data = json_decode($this->input->raw_input_stream);
+
+        $lc_purchase_details = $this->db->query("
+         SELECT lcpd.*,
+          p.Product_Code,
+          p.Product_Name,
+         pc.ProductCategory_Name
+         from tbl_lc_purchasedetails lcpd
+        join tbl_product p on p.Product_SlNo = lcpd.Product_IDNo
+        join tbl_productcategory pc on pc.ProductCategory_SlNo = p.ProductCategory_ID
+         where lcpd.LC_IDNo = '$data->lcId'
+         and lcpd.Status = 'a' 
+         and lcpd.LC_PurchaseDetails_branchID = ?", $this->brunch)->result();
+        echo json_encode($lc_purchase_details);
+    }
+
+
+    public function getExpenseDetails()
+    {
+        $data = json_decode($this->input->raw_input_stream);
+        $res = $this->db->query("
+         SELECT led.*
+         from tbl_lcc_expenses_details led
+         where led.lcc_id = '$data->lcId'
+         and led.status = 'a'
+         and led.branch_id = ?", $this->brunch)->result();
+        echo json_encode($res);
+    }
+
+
+    public function getLC()
+    {
+        $data = json_decode($this->input->raw_input_stream);
+        $branchId = $this->session->userdata("BRANCHid");
+
+        $lc = $this->db->query("
+            select 
+            lc.*,
+            lc.Lcc_No as lc_number
+            from tbl_lcc lc
+            where lc.branch_id = '$this->brunch'
+            and lc.status != 'd'
+            order by lc.Lcc_SlNo desc
+        ")->result();
+
+        $res['lc'] = $lc;
+
+        echo json_encode($res);
+    }
+
+    public function getLcDetals()
+    {
+        $data = json_decode($this->input->raw_input_stream);
+        $branchId = $this->session->userdata("BRANCHid");
+
+        $lc = $this->db->query("
+            select 
+            lc.*
+            from tbl_lcc lc
+            where lc.Lcc_SlNo = ?
+            and lc.branch_id = '$branchId'
+            and lc.status != 'd'
+        ", $data->lcId)->result();
+
+        $res['lc'] = $lc;
+
+        $lcDetails = $this->db->query("
+         SELECT led.*
+         from tbl_lcc_expenses_details led
+         where led.lcc_id = '$data->lcId'
+         and led.status = 'a'
+         and led.branch_id = ?", $this->brunch)->result();
+
+        $res['lcDetails'] = $lcDetails;
+        
+
+        echo json_encode($res);
+    }
+
+    public function deleteLc()
+    {
+        $res = ['success' => false, 'message' => ''];
+
+        try{
+
+            $data = json_decode($this->input->raw_input_stream);
+            /*Delete Sale Details*/
+            echo json_encode($data->lc_id);
+            exit;
+
+            $this->db->set('status', 'd')->where('Lcc_SlNo', $saleId)->update('tbl_saledetails');
+
+            /*Delete Sale Master Data*/
+            $this->db->set('Status', 'd')->where('SaleMaster_SlNo', $saleId)->update('tbl_salesmaster');
+
+        }catch(Exception $ex)
+        {
+            $res = ['success' => false, 'message' => $ex->getMessage()];
+        }
+    }
+
+    public function updateLccExpense()
+    {
+        $res = ['success' => false, 'message' => 'Nothing'];
+        try {
+
+            $accountObj = json_decode($this->input->raw_input_stream);
+
+            $duplicateNameCount = $this->db->query("select * from tbl_lcc_expenses where expenses_name = ? and branch_id = ? and expense_id != ?", [$accountObj->expenses_name, $this->brunch, $accountObj->expense_id])->num_rows();
+            
+            $account = (array)$accountObj;
+            unset($account['expense_id']);
+            $account['updated_by'] = $this->session->userdata("FullName");
+            $account['updated_datetime'] = date('Y-m-d H:i:s');
+
+            $this->db->where('expense_id', $accountObj->expense_id)->update('tbl_lcc_expenses', $account);
+
+            $res = ['success' => true, 'message' => 'Expenses updated'];
+        } catch (Exception $ex) {
+            throw new Exception($ex->getMessage());
+        }
+
+        echo json_encode($res);
+    }
+
+
+
+    public function getLccExpenses()
+    {
+        $expenses = $this->db->query("
+        SELECT lce.*
+        from tbl_lcc_expenses lce 
+        where lce.status = 'a'
+        and lce.branch_id = ?
+        
+        ", $this->brunch)->result();
+
+         echo json_encode($expenses);
+    }
+
+
+    public function lcInvoice()
+    {
+        $access = $this->mt->userAccess();
+        if (!$access) {
+            redirect(base_url());
+        }
+        $data['title'] = "LC Invoice";
+        $data['content'] = $this->load->view('Administrator/sales/lc_invoice', $data, TRUE);
+        $this->load->view('Administrator/index', $data);
+    }
+
+
+    public function lcInvoicePrint($lcId)
+    {
+        $data['title'] = "LC Invoice";
+        $data['lc_id'] = $lcId;
+        $data['content'] = $this->load->view('Administrator/account/lcAndreport', $data, TRUE);
+        $this->load->view('Administrator/index', $data);
+    }
+
+
+    public function getLccExpensesStock(){
+
+        $data = json_decode($this->input->raw_input_stream);
+        $expenses = $this->db->query("
+        SELECT led.*
+        from tbl_lcc_expenses_details led 
+        where led.lcc_id = '$data->lccId'
+        and led.status = 'a'
+        and led.branch_id = ?
+        
+        ", $this->brunch)->result();
+
+        echo json_encode($expenses);
+    }
+
+    public function updateLccDetails()
+    {
+        $res = ['success' => false, 'message' => 'Nothing'];
+        try {
+
+            $lcObj = json_decode($this->input->raw_input_stream);
+
+            $lc = array(
+                'account_name' => $lcObj->account->account_name,
+                'account_id' => $lcObj->account->account_id,
+                'account_number' => $lcObj->account->account_number,
+                'bank_name' => $lcObj->account->bank_name,
+                'supplier_name' => $lcObj->account->supplier_name,
+                'lc_purchase_total_amount' => $lcObj->account->subTotal,
+                'Lcc_No' => $lcObj->account->Lcc_No,
+                'description' => $lcObj->account->description,
+                'status' => 'p',
+                'updated_by' => $this->session->userdata("FullName"),
+                'updated_datetime' => date('Y-m-d H:i:s'),
+                'branch_id' => $this->session->userdata('BRANCHid'),
+            );
+
+            // $this->db->insert('tbl_lcc', $lcc);
+            
+            $this->db->where('Lcc_SlNo', $lcObj->account->Lcc_SlNo)->update('tbl_lcc', $lc);
+
+            // Insert Conversion Start
+            $this->db->query("DELETE FROM tbl_lcc_expenses_details WHERE lcc_id = ?", $lcObj->account->Lcc_SlNo);
+
+            foreach ($lcObj->cart as $cartCon) {
+                $ConDetails = array(
+                    'lcc_id' => $lcObj->account->Lcc_SlNo,
+                    'expense_name' => $cartCon->expense_name,
+                    'pay_bill' => $cartCon->pay_bill,
+                    'Status' => 'a',
+                    'updated_by' => $this->session->userdata("FullName"),
+                    'updated_datetime' => date('Y-m-d H:i:s'),
+                    'branch_id' => $this->session->userdata('BRANCHid')
+                );
+                $this->db->insert('tbl_lcc_expenses_details', $ConDetails);
+            }
+
+            $this->db->query("delete from tbl_lc_purchasedetails where LC_IDNo = ?", $lcObj->account->Lcc_SlNo);
+
+            foreach ($lcObj->productCart as $cartProduct) {
+                $lc_purchaseDetails = array(
+                    'LC_IDNo' => $lcObj->account->Lcc_SlNo,
+                    'Product_IDNo' => $cartProduct->productId,
+                    'LC_PurchaseDetails_TotalQuantity' => $cartProduct->quantity,
+                    'LC_PurchaseDetails_Rate' => $cartProduct->purchaseRate,
+                    'LC_PurchaseDetails_TotalAmount' => $cartProduct->total,
+                    'Status' => 'a',
+                    'UpdateBy' => $this->session->userdata("FullName"),
+                    'UpdateTime' => date('Y-m-d H:i:s'),
+                    'LC_PurchaseDetails_branchID' => $this->session->userdata("BRANCHid")
+                );
+
+                $this->db->insert('tbl_lc_purchasedetails', $lc_purchaseDetails);
+            }
+            
+            $lcId = $lcObj->account->Lcc_SlNo;
+            // Fetching Total Pay_bill
+            $query = $this->db->query("SELECT IFNULL(SUM(pay_bill), 0) AS total_pay_bill FROM tbl_lcc_expenses_details WHERE lcc_id = '$lcId' AND status = 'a'");
+            $row = $query->row();
+
+            if ($row && isset($row->total_pay_bill)) {
+                $total_pay_bill = $row->total_pay_bill;
+            } else {
+                // If the query didn't return a valid result, set $total_pay_bill to a default value (0)
+                $total_pay_bill = 0;
+            }
+
+            // check previous payment 
+            $checkBankPayment = $this->db->query("select * from tbl_bank_transactions where lc_id = ? and branch_id = ? and status = 1", [$lcObj->account->Lcc_SlNo, $this->session->userdata('BRANCHid')]);
+            if ($checkBankPayment->num_rows() > 0) {
+                $bank = array(
+                    'account_id' => $lcObj->account->account_id,
+                    'lc_id' => $lcObj->account->Lcc_SlNo,
+                    'transaction_date' => date('Y-m-d H:i:s'),
+                    'transaction_type' => 'withdraw',
+                    'amount' => strval($total_pay_bill) + $lcObj->account->subTotal, // Convert to string
+                    'note' => 'LC Expenses amount payment in bank',
+                    'saved_by' => $this->session->userdata('userId'),
+                    'saved_datetime' => date('Y-m-d H:i:s'),
+                    'branch_id' => $this->session->userdata('BRANCHid'),
+                    'status' => 0
+                );
+
+                $this->db->where('lc_id', $lcObj->account->Lcc_SlNo)->update('tbl_bank_transactions', $bank);
+            } else {
+                $bank = array(
+                    'account_id' => $lcObj->account->account_id,
+                    'lc_id' => $lcObj->account->Lcc_SlNo,
+                    'transaction_date' => date('Y-m-d H:i:s'),
+                    'transaction_type' => 'withdraw',
+                    'amount' => strval($total_pay_bill), // Convert to string
+                    'note' => 'LC Expenses amount payment in bank',
+                    'saved_by' => $this->session->userdata('userId'),
+                    'saved_datetime' => date('Y-m-d H:i:s'),
+                    'branch_id' => $this->session->userdata('BRANCHid'),
+                    'status' => 0
+                );
+
+                $this->db->insert('tbl_bank_transactions', $bank);
+            }
+
+            $res = ['success' => true, 'message' => 'LC updated', 'lc_id' => $lcObj->account->Lcc_SlNo];
+        } catch (Exception $ex) {
             throw new Exception($ex->getMessage());
         }
 
@@ -129,6 +623,23 @@ class Account extends CI_Controller {
 
             $res = ['success'=>true, 'message'=>'Account deleted'];
         } catch (Exception $ex){
+            throw new Exception($ex->getMessage());
+        }
+
+        echo json_encode($res);
+    }
+
+
+    public function deleteExpense()
+    {
+        $res = ['success' => false, 'message' => 'Nothing'];
+        try {
+            $data = json_decode($this->input->raw_input_stream);
+
+            $this->db->query("update tbl_lcc_expenses set status = 'd' where expense_id = ?", $data->accountId);
+
+            $res = ['success' => true, 'message' => 'Expenses deleted'];
+        } catch (Exception $ex) {
             throw new Exception($ex->getMessage());
         }
 

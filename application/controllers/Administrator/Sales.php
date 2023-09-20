@@ -241,7 +241,9 @@ class Sales extends CI_Controller {
         echo json_encode($saleDetails);
     }
 
-    public function getSalesRecord(){
+    public function getSalesRecord()
+    {
+        
         $data = json_decode($this->input->raw_input_stream);
         $branchId = $this->session->userdata("BRANCHid");
         $clauses = "";
@@ -301,8 +303,61 @@ class Sales extends CI_Controller {
 
         echo json_encode($sales);
     }
+
+    public function getLcRecordWithDetails()
+    {
+        $data = json_decode($this->input->raw_input_stream);
+        $branchId = $this->session->userdata("BRANCHid");
+        $clauses = "";
+        if (isset($data->dateFrom) && $data->dateFrom != '' && isset($data->dateTo) && $data->dateTo != '') {
+            $clauses .= " and lc.lc_date between '$data->dateFrom' and '$data->dateTo'";
+        }
+
+        // if (isset($data->customerId) && $data->customerId != '') {
+        //     $clauses .= " and sm.SalseCustomer_IDNo = '$data->customerId'";
+        // }
+
+        $lc = $this->db->query("
+            select 
+                lc.*
+            from tbl_lcc lc
+            where lc.branch_id = '$branchId'
+            and lc.status != 'd'
+            $clauses
+            order by lc.Lcc_SlNo desc
+        ")->result();
+ 
+        foreach ($lc as $lcProducts) {
+            $lcProducts->productDetails = $this->db->query("
+                select 
+                    lpd.*,
+                    p.Product_Name
+                from tbl_lc_purchasedetails lpd
+               left join tbl_product p on p.Product_SlNo = lpd.Product_IDNo
+                where lpd.LC_IDNo = ?
+                and lpd.Status != 'd'
+            ", $lcProducts->Lcc_SlNo)->result();
+
+
+            $lcProducts->expenseDetails = $this->db->query("
+                select 
+                    led.*
+                from tbl_lcc_expenses_details led
+                where led.lcc_id = ?
+                and led.status = 'a'
+            ", $lcProducts->Lcc_SlNo)->result();
+
+
+        }
+
+        echo json_encode($lc);
+
+    }
     
-    public function getSales(){
+
+    public function getSales()
+    {
+        
         $data = json_decode($this->input->raw_input_stream);
         $branchId = $this->session->userdata("BRANCHid");
 
@@ -370,6 +425,7 @@ class Sales extends CI_Controller {
 
         echo json_encode($res);
     }
+
 
     public function updateSales(){
         $res = ['success'=>false, 'message'=>''];
@@ -1253,6 +1309,7 @@ class Sales extends CI_Controller {
 
         $this->load->view('Administrator/sales/sales_invoice_search', $datas);
     }
+    
     function sales_record()  {
         $access = $this->mt->userAccess();
         if(!$access){
@@ -1263,45 +1320,57 @@ class Sales extends CI_Controller {
         $this->load->view('Administrator/index', $data); 
     }
 
+    function lc_record()
+    {
+        $access = $this->mt->userAccess();
+        if (!$access) {
+            redirect(base_url());
+        }
+        $data['title'] = "LC Record";
+        $data['content'] = $this->load->view('Administrator/sales/lc_record', $data, TRUE);
+        $this->load->view('Administrator/index', $data);
+    }
 
 
     
      function select_customerName()  { 
        ?>
-       <div class="form-group">
-        <label class="col-sm-2 control-label no-padding-right" for="customerID"> Select Customer </label>
-        <div class="col-sm-3">
-            <select name="" id="customerID" data-placeholder="Choose a Customer..." class="chosen-select" >
-                <option value="All">All</option>
-                <?php 
+<div class="form-group">
+    <label class="col-sm-2 control-label no-padding-right" for="customerID"> Select Customer </label>
+    <div class="col-sm-3">
+        <select name="" id="customerID" data-placeholder="Choose a Customer..." class="chosen-select">
+            <option value="All">All</option>
+            <?php 
                 $sql = $this->db->query("SELECT * FROM tbl_customer where Customer_brunchid = '".$this->sbrunch."' AND Customer_Type = 'Local' order by Customer_Name asc");
                 $row = $sql->result();
                 foreach($row as $row){ ?>
 
-                <option value="<?php echo $row->Customer_SlNo; ?>"><?php echo $row->Customer_Name; ?> (<?php echo $row->Customer_Code; ?>)</option>
-                <?php } ?>
-            </select>
-        </div>
+            <option value="<?php echo $row->Customer_SlNo; ?>"><?php echo $row->Customer_Name; ?>
+                (<?php echo $row->Customer_Code; ?>)</option>
+            <?php } ?>
+        </select>
     </div>
-       <?php
+</div>
+<?php
     }
     function select_InvCustomerName()  {
         ?>
-        <div class="form-group">
-            <div class="col-sm-3">
-                <select id="Salestype" class="chosen-select" name="Salestype">
-                    <option value="All">All</option>
-                    <?php
+<div class="form-group">
+    <div class="col-sm-3">
+        <select id="Salestype" class="chosen-select" name="Salestype">
+            <option value="All">All</option>
+            <?php
                     $sql = $this->db->query("SELECT * FROM tbl_customer where Customer_brunchid = '".$this->sbrunch."' AND Customer_Type = 'Local' order by Customer_Name asc");
                     $row = $sql->result();
                     foreach($row as $row){ ?>
 
-                        <option value="<?php echo $row->Customer_SlNo; ?>"><?php echo $row->Customer_Name; ?> (<?php echo $row->Customer_Code; ?>)</option>
-                    <?php } ?>
-                </select>
-            </div>
-        </div>
-        <?php
+            <option value="<?php echo $row->Customer_SlNo; ?>"><?php echo $row->Customer_Name; ?>
+                (<?php echo $row->Customer_Code; ?>)</option>
+            <?php } ?>
+        </select>
+    </div>
+</div>
+<?php
     }
     function sales_customerName()  {
         $id = $this->input->post('customerID');

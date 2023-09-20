@@ -8,9 +8,9 @@ $db['default'] = array(
 	'dsn'	=> '',
 	'hostname' => 'localhost',
 	
-  	'username' => 'dewbxcak_admin4',
-  	'password' => '(h-BfA?6WM)Z',
-  	'database' => 'dewbxcak_mother',
+  	'username' => 'root',
+  	'password' => '',
+  	'database' => 'agrani_international',
 	
 // 	'username' => 'root',
 // 	'password' => '',

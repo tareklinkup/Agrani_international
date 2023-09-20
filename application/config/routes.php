@@ -392,6 +392,48 @@ $route['update_account'] = 'Administrator/Account/updateAccount';
 $route['delete_account'] = 'Administrator/Account/deleteAccount';
 $route['get_accounts'] = 'Administrator/Account/getAccounts';
 $route['get_cash_and_bank_balance'] = 'Administrator/Account/getCashAndBankBalance';
+
+// Lcc Expenses 
+$route['lcc_expense'] = 'Administrator/Account/lcc_expense';
+$route['add_lcc_expense'] = 'Administrator/Account/addLccExpense';
+$route['get_lcc_expenses'] = 'Administrator/Account/getLccExpenses';
+$route['update_lcc_expense'] = 'Administrator/Account/updateLccExpense';
+$route['delete_expense'] = 'Administrator/Account/deleteExpense';
+$route['get_lcc_expenses_stock'] = 'Administrator/Account/getLccExpensesStock';
+$route['update_lcc_details'] = 'Administrator/Account/updateLccDetails';
+$route['lc_invoice'] = 'Administrator/Account/lcInvoice';
+$route['lc_invoice_print/(:any)'] = 'Administrator/Account/lcInvoicePrint/$1';
+$route['get_LC'] = 'Administrator/Account/getLC';
+$route['get_lc_details'] = 'Administrator/Account/getLcDetals';
+$route['get_expense_details'] = 'Administrator/Account/getExpenseDetails';
+$route['lc_record'] = 'Administrator/Sales/lc_record';
+$route['get_lc_record_with_details'] = 'Administrator/Sales/getLcRecordWithDetails';
+$route['delete_lc'] = 'Administrator/Account/deleteLc';
+
+
+$route['lc_add'] = 'Administrator/Account/lcAdd';
+$route['add_lcc_details'] = 'Administrator/Account/addLccDetails';
+$route['get_lcc_details'] = 'Administrator/Account/getLccDetails';
+$route['change_bank_status'] = 'Administrator/Account/changeBankStatus';
+$route['get_lc_purchase_details'] = 'Administrator/Account/getLCPurchaseDetails';
+
+
+
+
+
+
+
+
+
+// $route['accountEdit'] = 'Administrator/Account/account_edit';
+// $route['update_account'] = 'Administrator/Account/updateAccount';
+// $route['delete_account'] = 'Administrator/Account/deleteAccount';
+// $route['get_accounts'] = 'Administrator/Account/getAccounts';
+// $route['get_cash_and_bank_balance'] = 'Administrator/Account/getCashAndBankBalance';
+
+
+
+
  
 $route['TransactionReport'] = 'Administrator/Account/all_transaction_report'; 
 $route['TransactionReportSearch'] = 'Administrator/Account/transaction_report_search';
