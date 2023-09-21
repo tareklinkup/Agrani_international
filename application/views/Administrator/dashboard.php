@@ -690,10 +690,25 @@ if ($module == 'dashboard' or $module == '') { ?>
                 <div class="col-md-12 section20">
                     <a href="<?php echo base_url(); ?>lc_invoice">
                         <div class="logo">
-                            <i class="menu-icon fa fa-rotate-left"></i>
+                            <i class="menu-icon fa fa-print"></i>
                         </div>
                         <div class="textModule">
-                            Expense Record
+                            LC Invoice
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <?php if (array_search("lc_record", $access) > -1 || isset($CheckSuperAdmin) || isset($CheckAdmin)) : ?>
+            <div class="col-md-2 col-xs-6 ">
+                <div class="col-md-12 section20">
+                    <a href="<?php echo base_url(); ?>lc_record">
+                        <div class="logo">
+                            <i class="menu-icon fa fa-th-list"></i>
+                        </div>
+                        <div class="textModule">
+                            LC Record
                         </div>
                     </a>
                 </div>
